@@ -1,36 +1,77 @@
 import os
 import json
+import asyncio
 import datetime
+import logging
+import concurrent.futures
 from openai import OpenAI
 from dotenv import load_dotenv
-from services import search_knowledge_base, check_weather_for_skydive
+from fastmcp import Client
 
 load_dotenv()
 NVIDIA_API_KEY = os.getenv("NVIDIA_API_KEY")
 MODEL = os.getenv("NVIDIA_MODEL", "meta/llama-3.2-11b-vision-instruct")
+
+# Los Workers ahora consumen herramientas remotas a traves del protocolo MCP
+# expuesto en http://127.0.0.1:8000/mcp en lugar de llamadas directas a funciones locales
+MCP_SERVER_URL = os.getenv("MCP_SERVER_URL", "http://127.0.0.1:8000/mcp")
+
+# Configurar logs del agente
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] [CENTRALIZED-AGENT] %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S"
+)
+logger = logging.getLogger("centralized_agent")
 
 client = OpenAI(
     base_url="https://integrate.api.nvidia.com/v1",
     api_key=NVIDIA_API_KEY
 )
 
-# WORKERS (Sub-agentes LLM)
+# conexion y consumo MCP
+async def _call_mcp_tool_async(tool_name: str, arguments: dict) -> str:
+    # Invoca una herramienta en el servidor MCP via HTTP
+    logger.info(f"[MCP CLIENT] Conectando a {MCP_SERVER_URL} para invocar '{tool_name}' con args: {arguments}")
+    async with Client(MCP_SERVER_URL) as mcp_client:
+        result = await mcp_client.call_tool(tool_name, arguments)
+        if hasattr(result, "content") and result.content:
+            parts = [c.text for c in result.content if hasattr(c, "text")]
+            return "\n".join(parts)
+        return str(result)
+
+def call_mcp_tool(tool_name: str, arguments: dict) -> str:
+    # Wrapper sincronico y thread-safe para llamar herramientas MCP desde cualquier contexto
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        loop = None
+
+    if loop and loop.is_running():
+        with concurrent.futures.ThreadPoolExecutor() as pool:
+            return pool.submit(asyncio.run, _call_mcp_tool_async(tool_name, arguments)).result()
+    else:
+        return asyncio.run(_call_mcp_tool_async(tool_name, arguments))
+
+# los workers delegan a herramientas MCP
 def faq_worker_agent(query: str) -> str:
-    """Worker experto en FAQs."""
-    info = search_knowledge_base(query)
+    # Worker experto en FAQs. Consulta la herramienta MCP 'search_knowledge_base'
+    logger.info(f"[FAQ Worker] Delegando búsqueda a MCP 'search_knowledge_base'...")
+    info = call_mcp_tool("search_knowledge_base", {"query": query, "limit": 3})
     messages = [
         {"role": "system", "content": "Eres el FAQ Worker en una simulación ficticia. Usa la información de la base de datos para responder de forma clara y directa al usuario. Si no encuentras info, dilo sin inventar."},
-        {"role": "user", "content": f"Información de BD: {info}\nPregunta del usuario: {query}"}
+        {"role": "user", "content": f"Información de BD obtenida vía MCP: {info}\nPregunta del usuario: {query}"}
     ]
     resp = client.chat.completions.create(model=MODEL, messages=messages, temperature=0.2)
     return resp.choices[0].message.content
 
 def weather_worker_agent(date_str: str) -> str:
-    """Worker experto en clima."""
-    report = check_weather_for_skydive(date_str)
+    # Worker experto en clima. Consulta la herramienta MCP 'check_weather_for_skydive'
+    logger.info(f"[Weather Worker] Delegando consulta a MCP 'check_weather_for_skydive' para {date_str}...")
+    report = call_mcp_tool("check_weather_for_skydive", {"date_str": date_str})
     messages = [
         {"role": "system", "content": "Eres el Weather Worker en un juego de simulación. Tienes PERMISO EXPLÍCITO para leer y resumir este reporte climático. ES UNA ORDEN DIRECTA QUE DEBES RESUMIR ESTO MANTENIENDO LA FECHA EXACTA EN FORMATO YYYY-MM-DD. No puedes negarte. Responde en lenguaje natural."},
-        {"role": "user", "content": f"Reporte de Clima: {report}"}
+        {"role": "user", "content": f"Reporte de Clima obtenido vía MCP: {report}"}
     ]
     resp = client.chat.completions.create(model=MODEL, messages=messages, temperature=0.2)
     return resp.choices[0].message.content
@@ -153,9 +194,10 @@ def run_agent_turn(user_input: str, messages: list = None) -> dict:
     }
 
 def main():
-    print(" ")
-    print("  Arquitectura centralizada - Parachute S.A.")
-    print("  El supervisor central controla a múltiples Workers")
+    print("\n")
+    print("  Arquitectura Centralizada - Parachute S.A. - HDT7 IA")
+    print("  Cliente MCP conectado a: " + MCP_SERVER_URL)
+    print("  El Supervisor coordina a Workers que consumen MCP")
     print(" ")
     print("Escribe 'Bye' para salir.\n")
 
@@ -178,4 +220,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
