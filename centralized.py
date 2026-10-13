@@ -4,6 +4,7 @@ import asyncio
 import datetime
 import logging
 import concurrent.futures
+import re
 from openai import OpenAI
 from dotenv import load_dotenv
 from fastmcp import Client
@@ -101,6 +102,94 @@ TOOLS = [
     }
 ]
 
+WEEKDAYS = {
+    "lunes": 0,
+    "martes": 1,
+    "miércoles": 2,
+    "miercoles": 2,
+    "jueves": 3,
+    "viernes": 4,
+    "sábado": 5,
+    "sabado": 5,
+    "domingo": 6,
+}
+MONTHS = {
+    "enero": 1,
+    "febrero": 2,
+    "marzo": 3,
+    "abril": 4,
+    "mayo": 5,
+    "junio": 6,
+    "julio": 7,
+    "agosto": 8,
+    "septiembre": 9,
+    "octubre": 10,
+    "noviembre": 11,
+    "diciembre": 12,
+}
+
+
+def extract_weather_date(
+    query: str, today: datetime.date | None = None
+) -> str | None:
+    """Extrae las fechas comunes de consultas meteorológicas sin depender del LLM."""
+    today = today or datetime.date.today()
+    text = query.casefold()
+
+    iso_match = re.search(r"\b\d{4}-\d{2}-\d{2}\b", text)
+    if iso_match:
+        try:
+            return datetime.date.fromisoformat(iso_match.group()).isoformat()
+        except ValueError:
+            return None
+
+    if re.search(r"\bmañana\b", text):
+        return (today + datetime.timedelta(days=1)).isoformat()
+    if re.search(r"\bhoy\b", text):
+        return today.isoformat()
+
+    for name, weekday in WEEKDAYS.items():
+        if re.search(rf"\b{name}\b", text):
+            days_ahead = (weekday - today.weekday()) % 7 or 7
+            return (today + datetime.timedelta(days=days_ahead)).isoformat()
+
+    month_names = "|".join(MONTHS)
+    named_date = re.search(
+        rf"\b(\d{{1,2}})\s+de\s+({month_names})(?:\s+de\s+(\d{{4}}))?\b",
+        text,
+    )
+    if named_date:
+        day, month_name, year = named_date.groups()
+        try:
+            return datetime.date(
+                int(year or today.year), MONTHS[month_name], int(day)
+            ).isoformat()
+        except ValueError:
+            return None
+
+    return None
+
+
+def is_weather_query(query: str, date_str: str | None = None) -> bool:
+    text = query.casefold()
+    weather_terms = (
+        "clima",
+        "meteorolog",
+        "pronóstico",
+        "pronostico",
+        "lluvia",
+        "viento",
+        "ráfaga",
+        "rafaga",
+        "nubosidad",
+        "agendar",
+        "reservar",
+    )
+    return any(term in text for term in weather_terms) or (
+        "saltar" in text and date_str is not None
+    )
+
+
 def get_initial_messages():
     """Genera los mensajes iniciales del sistema."""
     return [
@@ -128,6 +217,27 @@ def run_agent_turn(user_input: str, messages: list = None) -> dict:
     tools_called = []
     tool_args = []
     tool_results = []
+
+    date_str = extract_weather_date(user_input)
+    if is_weather_query(user_input, date_str):
+        if date_str:
+            final_text = weather_worker_agent(date_str)
+            tools_called.append("delegate_to_weather_worker")
+            tool_args.append({"date_str": date_str})
+            tool_results.append(final_text)
+        else:
+            final_text = (
+                "¿Para qué fecha deseas consultar el clima? "
+                "Puedes indicarla como YYYY-MM-DD."
+            )
+        messages.append({"role": "assistant", "content": final_text})
+        return {
+            "output": final_text,
+            "tools_called": tools_called,
+            "tool_args": tool_args,
+            "tool_results": tool_results,
+            "messages": messages,
+        }
 
     response = client.chat.completions.create(
         model=MODEL,
@@ -191,32 +301,9 @@ def run_agent_turn(user_input: str, messages: list = None) -> dict:
     }
 
 def main():
-    print("\n")
-    print("  Arquitectura Centralizada - Parachute S.A. - HDT7 IA")
-    print("  Cliente MCP conectado a: " + MCP_SERVER_URL)
-    print("  El Supervisor coordina a Workers que consumen MCP")
-    print(" ")
-    print("Escribe 'Bye' para salir.\n")
+    from a2a_client import main as run_a2a_client
 
-    messages = get_initial_messages()
-    is_running = True
-    while is_running:
-        try:
-            user_input = input("\nTú: ").strip()
-            if user_input.lower() == "bye":
-                is_running = False
-                continue
-            if not user_input:
-                continue
-
-            turn_result = run_agent_turn(user_input, messages)
-            print("")
-            print("Supervisor Central:")
-            print(turn_result['output'])
-            print("")
-
-        except Exception as e:
-            print(f"Error: {e}")
+    run_a2a_client()
 
 if __name__ == "__main__":
     main()
