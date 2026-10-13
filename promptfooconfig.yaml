@@ -1,0 +1,106 @@
+envFile: .env
+description: 'Hoja de Trabajo 6 - AI Evals (Parachute S.A.)'
+
+providers:
+  - id: 'python:agent_provider.py'
+    label: 'Supervisor Central - Parachute S.A.'
+    config:
+      pythonExecutable: 'python'
+
+prompts:
+  - '{{query}}'
+
+defaultTest:
+  options:
+    provider:
+      id: 'openai:chat:meta/llama-3.2-11b-vision-instruct'
+      config:
+        apiBaseUrl: 'https://integrate.api.nvidia.com/v1'
+        apiKeyEnvar: 'NVIDIA_API_KEY'
+
+tests:
+  # SUITE DE EVALUACIÓN: FAQs y Atención al Cliente
+  # 1. Factuality - Peso máximo (FAQ-021)
+  - description: '[FAQ-01] Factuality: Peso máximo permitido para saltar'
+    vars:
+      query: '¿Cuál es el peso máximo permitido para saltar?'
+    assert:
+      - type: model-graded-closedqa
+        value: 'El modelo debe responder que el límite de peso máximo estricto para realizar el salto tándem es de 100 kg. Opcionalmente puede mencionar el recargo de Q250 si el peso está entre 90 kg y 100 kg.'
+
+  # 2. Factuality - Edad mínima (FAQ-023)
+  - description: '[FAQ-02] Factuality: Edad mínima para realizar un salto'
+    vars:
+      query: '¿Cuál es la edad mínima para realizar un salto?'
+    assert:
+      - type: model-graded-closedqa
+        value: 'El modelo debe responder que la edad mínima para participar es de 18 años cumplidos (con DPI o Pasaporte), y que menores de 16 y 17 años pueden participar únicamente acompañados de sus padres o tutores legales con autorización firmada.'
+
+  # 3. Determinístico - Tiempo de espera tras buceo (FAQ-029)
+  - description: '[FAQ-03] Determinístico: Tiempo de espera tras hacer buceo antes de saltar'
+    vars:
+      query: '¿Cuánto tiempo debo esperar tras hacer buceo antes de saltar?'
+    assert:
+      - type: icontains
+        value: '24 horas'
+
+  # 4. Determinístico - Altura del salto tándem (FAQ-049)
+  - description: '[FAQ-04] Determinístico: Altura del salto tándem'
+    vars:
+      query: '¿A qué altura se realiza el salto tándem?'
+    assert:
+      - type: regex
+        value: '3,?000|10,?000'
+
+  # 5. Latencia - Velocidad durante la caída libre (FAQ-053)
+  - description: '[FAQ-05] Latencia: Velocidad durante la caída libre'
+    vars:
+      query: '¿Qué velocidad se alcanza durante la caída libre?'
+    assert:
+      - type: latency
+        threshold: 25000
+
+  # 6. Tool Execution - Saltar con cámara Go-Pro o celular (FAQ-081)
+  - description: '[FAQ-06] Tool Execution: Prohibición de cámara Go-Pro o celular personal'
+    vars:
+      query: '¿Puedo saltar con mi propia cámara Go-Pro o teléfono celular?'
+    assert:
+      - type: javascript
+        value: "context.metadata && context.metadata.tools_called && context.metadata.tools_called.includes('delegate_to_faq_worker') && !context.metadata.tools_called.includes('delegate_to_weather_worker')"
+
+  # SUITE DE EVALUACIÓN: Agendamiento y Clima
+  # 7. Factuality - Condiciones Climáticas (CLIMA-01)
+  - description: '[CLIMA-01] Factuality: Validación de condiciones climáticas y recomendación'
+    vars:
+      query: 'Quiero agendar un salto tándem para mañana. ¿Cómo estará el clima en la zona de salto y está permitido saltar?'
+    assert:
+      - type: model-graded-closedqa
+        value: 'El modelo debe reportar el estado del clima para la fecha solicitada basado en el reporte meteorológico real. Debe justificar si está PERMITIDO o NO RECOMENDADO basándose en viento, ráfagas o lluvia.'
+
+  # 8. Determinístico - Regex y Contains (CLIMA-02)
+  - description: '[CLIMA-02] Determinístico: Mención de fecha y conclusión de viabilidad'
+    vars:
+      query: '¿El clima para saltar el 2026-10-03 es favorable?'
+    assert:
+      - type: regex
+        value: 'PERMITIDO|NO RECOMENDADO|viento|clima|seguridad'
+      - type: regex
+        value: '\d{4}-\d{2}-\d{2}'
+
+  # 9. Latencia - Tiempo de respuesta para el flujo completo (CLIMA-03)
+  - description: '[CLIMA-03] Latencia: Tiempo de respuesta del agente y de Open-Meteo'
+    vars:
+      query: '¿Cómo estará el clima para saltar el 2026-10-05?'
+    assert:
+      - type: latency
+        threshold: 60000
+
+  # 10. Tool Execution - Llamada correcta al worker de clima (CLIMA-04)
+  - description: '[CLIMA-04] Tool Execution: Delegación al weather worker con formato ISO'
+    vars:
+      query: 'Quiero saber si hay buen tiempo para saltar en paracaídas el 2026-10-04.'
+    assert:
+      - type: javascript
+        value: "context.metadata && context.metadata.tools_called && context.metadata.tools_called.includes('delegate_to_weather_worker') && !context.metadata.tools_called.includes('delegate_to_faq_worker') && context.metadata.tool_args.some(arg => arg.date_str && /^\\d{4}-\\d{2}-\\d{2}$/.test(arg.date_str))"
+
+

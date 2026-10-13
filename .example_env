@@ -1,0 +1,12 @@
+# Reemplazar con datos verdaderos de produccion
+NVIDIA_API_KEY=
+NVIDIA_MODEL=
+OPENAI_API_KEY=
+OPENAI_BASE_URL=
+
+# Configuración de base de datos PostgreSQL con pgvector
+DB_HOST=localhost
+DB_PORT=5432
+DB_NAME=parachute_faqs
+DB_USER=postgres
+DB_PASSWORD=postgrespassword
