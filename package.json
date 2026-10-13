@@ -1,0 +1,25 @@
+{
+  "name": "hdt6-ia-evals",
+  "version": "1.0.0",
+  "description": "Controlador de versiones para la Hoja de trabajo 6 de AI Engineering - Pedro Caso y Hugo Méndez",
+  "main": "index.js",
+  "scripts": {
+    "eval": "promptfoo eval --env-file .env -j 1 --no-cache -o eval_report.html",
+    "view": "promptfoo view"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Pxdro-410/HDT6-IA-Evals.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/Pxdro-410/HDT6-IA-Evals/issues"
+  },
+  "homepage": "https://github.com/Pxdro-410/HDT6-IA-Evals#readme",
+  "devDependencies": {
+    "promptfoo": "^0.123.1"
+  }
+}
