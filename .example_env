@@ -10,3 +10,10 @@ DB_PORT=5432
 DB_NAME=parachute_faqs
 DB_USER=postgres
 DB_PASSWORD=postgrespassword
+
+# Servicios locales
+MCP_SERVER_URL=http://127.0.0.1:8000/mcp
+A2A_SERVER_URL=http://127.0.0.1:9999
+A2A_PUBLIC_URL=http://127.0.0.1:9999
+A2A_HOST=127.0.0.1
+A2A_PORT=9999

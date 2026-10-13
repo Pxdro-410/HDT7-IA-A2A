@@ -3,6 +3,7 @@
 venv/
 env/
 __pycache__/
+.vscode
 
 # Variables de entorno
 .env
@@ -15,4 +16,4 @@ docker-compose.yml
 
 # Node & Promptfoo
 node_modules/
-.promptfoo/
+.promptfoo/
