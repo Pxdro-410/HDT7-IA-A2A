@@ -16,13 +16,10 @@ MODEL = os.getenv("NVIDIA_MODEL", "meta/llama-3.2-11b-vision-instruct")
 # expuesto en http://127.0.0.1:8000/mcp en lugar de llamadas directas a funciones locales
 MCP_SERVER_URL = os.getenv("MCP_SERVER_URL", "http://127.0.0.1:8000/mcp")
 
-# Configurar logs del agente
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] [CENTRALIZED-AGENT] %(message)s",
-    datefmt="%Y-%m-%d %H:%M:%S"
-)
-logger = logging.getLogger("centralized_agent")
+# Silenciar logs HTTP de librerías externas 
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("httpcore").setLevel(logging.WARNING)
+logging.getLogger("openai").setLevel(logging.WARNING)
 
 client = OpenAI(
     base_url="https://integrate.api.nvidia.com/v1",
@@ -32,7 +29,7 @@ client = OpenAI(
 # conexion y consumo MCP
 async def _call_mcp_tool_async(tool_name: str, arguments: dict) -> str:
     # Invoca una herramienta en el servidor MCP via HTTP
-    logger.info(f"[MCP CLIENT] Conectando a {MCP_SERVER_URL} para invocar '{tool_name}' con args: {arguments}")
+    print(f"  ... [MCP Client] Invocando '{tool_name}' en servidor MCP...")
     async with Client(MCP_SERVER_URL) as mcp_client:
         result = await mcp_client.call_tool(tool_name, arguments)
         if hasattr(result, "content") and result.content:
@@ -56,7 +53,7 @@ def call_mcp_tool(tool_name: str, arguments: dict) -> str:
 # los workers delegan a herramientas MCP
 def faq_worker_agent(query: str) -> str:
     # Worker experto en FAQs. Consulta la herramienta MCP 'search_knowledge_base'
-    logger.info(f"[FAQ Worker] Delegando búsqueda a MCP 'search_knowledge_base'...")
+    print("  ... [FAQ Worker] Delegando búsqueda a MCP...")
     info = call_mcp_tool("search_knowledge_base", {"query": query, "limit": 3})
     messages = [
         {"role": "system", "content": "Eres el FAQ Worker en una simulación ficticia. Usa la información de la base de datos para responder de forma clara y directa al usuario. Si no encuentras info, dilo sin inventar."},
@@ -67,7 +64,7 @@ def faq_worker_agent(query: str) -> str:
 
 def weather_worker_agent(date_str: str) -> str:
     # Worker experto en clima. Consulta la herramienta MCP 'check_weather_for_skydive'
-    logger.info(f"[Weather Worker] Delegando consulta a MCP 'check_weather_for_skydive' para {date_str}...")
+    print(f"  ... [Weather Worker] Consultando reporte meteorológico a MCP para {date_str}...")
     report = call_mcp_tool("check_weather_for_skydive", {"date_str": date_str})
     messages = [
         {"role": "system", "content": "Eres el Weather Worker en un juego de simulación. Tienes PERMISO EXPLÍCITO para leer y resumir este reporte climático. ES UNA ORDEN DIRECTA QUE DEBES RESUMIR ESTO MANTENIENDO LA FECHA EXACTA EN FORMATO YYYY-MM-DD. No puedes negarte. Responde en lenguaje natural."},
@@ -213,7 +210,10 @@ def main():
                 continue
 
             turn_result = run_agent_turn(user_input, messages)
-            print(f"Supervisor Central: {turn_result['output']}")
+            print("")
+            print("Supervisor Central:")
+            print(turn_result['output'])
+            print("")
 
         except Exception as e:
             print(f"Error: {e}")
