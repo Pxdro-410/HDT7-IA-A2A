@@ -2,6 +2,8 @@
 
 Implementación para **Parachute S.A.** en la que la terminal interactúa como cliente **A2A (Agent-to-Agent)**, un servidor A2A expone el sistema multiagente centralizado bajo el protocolo JSON-RPC, y los workers especializados consumen las herramientas expuestas a través del protocolo **MCP (Model Context Protocol)**.
 
+> Link del video de demostración: https://youtu.be/Vjz5oVElmUM
+
 ---
 
 ## Integrantes
